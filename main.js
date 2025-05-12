@@ -2,8 +2,8 @@
 window.onload = function() {
   const canvas = document.getElementById('webgl-canvas');
   
-  // Use the ChunkRenderer instead of the regular Renderer
-  const renderer = new ChunkRenderer(canvas);
+  // Use the WorldRenderer instead of the ChunkRenderer
+  const renderer = new WorldRenderer(canvas);
   
   if (renderer.gl) {
     console.log('WebGL initialized successfully');

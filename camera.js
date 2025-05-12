@@ -16,7 +16,7 @@ class Camera {
     this.mouseSensitivity = 0.1;
     
     // For smooth movement
-    this.movementSmoothing = 0.8; // 0 = no smoothing, 1 = infinite smoothing
+    this.movementSmoothing = 0.92; // 0 = no smoothing, 1 = infinite smoothing
     this.velocity = [0.0, 0.0, 0.0];
     
     // Key states

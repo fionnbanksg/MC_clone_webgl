@@ -1,5 +1,4 @@
-// chunk.js - Minecraft-style chunk renderer with face culling optimization
-
+// Enhanced Chunk class with better terrain generation
 class Chunk {
   constructor(size = 16) {
     this.size = size;
@@ -33,8 +32,8 @@ class Chunk {
       0.5      // Bottom face
     ];
     
-    // Initialize with some test terrain
-    this.generateTerrain();
+    // Fill with air by default
+    this.blocks.fill(this.blockTypes.AIR);
   }
   
   // Get block at x,y,z position
@@ -55,19 +54,71 @@ class Chunk {
     this.blocks[index] = blockType;
   }
   
-  // Generate simple test terrain
-  generateTerrain() {
+  // Generate simple perlin noise (simplified version)
+  noise(x, y, z, seed) {
+    // Simple hash function for pseudo-randomness
+    const hash = (x + seed) * 374761393 + y * 668265263 + z * 952531579;
+    const value = Math.sin(hash) * 43758.5453123;
+    return value - Math.floor(value);
+  }
+  
+  // Generate 2D noise for terrain
+  noise2D(x, z, seed) {
+    // Use multiple octaves for more natural terrain
+    let result = 0;
+    let amplitude = 1.0;
+    let frequency = 0.1;
+    let maxValue = 0;
+    
+    for (let i = 0; i < 4; i++) {
+      result += this.noise(x * frequency, 0, z * frequency, seed) * amplitude;
+      maxValue += amplitude;
+      amplitude *= 0.5;
+      frequency *= 2;
+    }
+    
+    return result / maxValue;
+  }
+  
+  // Generate terrain with better algorithms, using world chunk coordinates
+  generateTerrain(chunkWorldX, chunkWorldZ, seed) {
     // Fill with air first
     this.blocks.fill(this.blockTypes.AIR);
     
-    // Create a basic heightmap
+    // Water level
+    const waterLevel = Math.floor(this.size * 0.3); // 30% up from bottom
+    
+    // Create a heightmap using improved noise function
     const heightMap = [];
     for (let x = 0; x < this.size; x++) {
       heightMap[x] = [];
       for (let z = 0; z < this.size; z++) {
-        // Generate a simple heightmap (can be changed to perlin noise for better terrain)
-        const height = Math.floor(Math.sin(x/3) * 2 + Math.cos(z/3) * 2) + Math.floor(this.size/2);
-        heightMap[x][z] = Math.max(1, Math.min(this.size-1, height));
+        // Calculate world coordinates
+        const worldX = chunkWorldX * this.size + x;
+        const worldZ = chunkWorldZ * this.size + z;
+        
+        // Generate height using noise
+        // Scale height to be between 0 and size
+        const noise = this.noise2D(worldX * 0.02, worldZ * 0.02, seed);
+        
+        // Add some variety to the terrain
+        let height;
+        
+        // Create different biomes based on noise
+        const biomeFactor = this.noise2D(worldX * 0.005, worldZ * 0.005, seed + 1000);
+        
+        if (biomeFactor > 0.6) {
+          // Mountains
+          height = Math.floor(noise * this.size * 0.7 + this.size * 0.3);
+        } else if (biomeFactor < 0.3) {
+          // Plains
+          height = Math.floor(noise * this.size * 0.2 + this.size * 0.3);
+        } else {
+          // Hills
+          height = Math.floor(noise * this.size * 0.4 + this.size * 0.3);
+        }
+        
+        heightMap[x][z] = Math.max(1, Math.min(this.size - 1, height));
       }
     }
     
@@ -79,43 +130,80 @@ class Chunk {
         // Fill below height with different blocks
         for (let y = 0; y < height; y++) {
           if (y === height - 1) {
-            // Top layer is grass
-            this.setBlock(x, y, z, this.blockTypes.GRASS);
+            // Top layer depends on height
+            if (height < waterLevel + 2) {
+              // Beach/shoreline
+              this.setBlock(x, y, z, this.blockTypes.SAND);
+            } else {
+              // Normal grass
+              this.setBlock(x, y, z, this.blockTypes.GRASS);
+            }
           } else if (y > height - 4) {
-            // Next 3 layers are dirt
+            // Dirt layer
             this.setBlock(x, y, z, this.blockTypes.DIRT);
           } else {
-            // Below that is stone
+            // Stone below
             this.setBlock(x, y, z, this.blockTypes.STONE);
           }
         }
         
-        // Add some water
-        if (height < this.size/2 - 2) {
-          for (let y = height; y < this.size/2 - 2; y++) {
+        // Add water up to water level
+        if (height < waterLevel) {
+          for (let y = height; y < waterLevel; y++) {
             this.setBlock(x, y, z, this.blockTypes.WATER);
           }
         }
       }
     }
     
-    // Add some caves
-    for (let i = 0; i < 10; i++) {
-      const caveX = Math.floor(Math.random() * this.size);
-      const caveY = Math.floor(Math.random() * (this.size/2));
-      const caveZ = Math.floor(Math.random() * this.size);
-      const caveSize = Math.floor(Math.random() * 3) + 2;
-      
-      // Carve out a sphere
-      for (let x = -caveSize; x <= caveSize; x++) {
-        for (let y = -caveSize; y <= caveSize; y++) {
-          for (let z = -caveSize; z <= caveSize; z++) {
-            if (x*x + y*y + z*z <= caveSize*caveSize) {
-              const bx = caveX + x;
-              const by = caveY + y;
-              const bz = caveZ + z;
-              if (bx >= 0 && by >= 0 && bz >= 0 && bx < this.size && by < this.size && bz < this.size) {
-                this.setBlock(bx, by, bz, this.blockTypes.AIR);
+    // Add caves using 3D noise
+    this.generateCaves(chunkWorldX, chunkWorldZ, seed);
+  }
+  
+  // Generate cave systems with 3D noise
+  generateCaves(chunkWorldX, chunkWorldZ, seed) {
+    // Sample resolution (for performance)
+    const resolution = 4;
+    
+    for (let x = 0; x < this.size; x += resolution) {
+      for (let y = 0; y < this.size; y += resolution) {
+        for (let z = 0; z < this.size; z += resolution) {
+          // Skip near the top of the terrain
+          if (y > this.size * 0.7) continue;
+          
+          // Calculate world coordinates
+          const worldX = chunkWorldX * this.size + x;
+          const worldY = y;
+          const worldZ = chunkWorldZ * this.size + z;
+          
+          // Generate 3D noise
+          const caveNoise = this.noise(worldX * 0.08, worldY * 0.08, worldZ * 0.08, seed + 500);
+          
+          // If noise value is above threshold, create a cave
+          if (caveNoise > 0.7) {
+            // Create a cave area
+            const caveSize = Math.floor(resolution * 0.8);
+            
+            for (let cx = 0; cx < resolution; cx++) {
+              for (let cy = 0; cy < resolution; cy++) {
+                for (let cz = 0; cz < resolution; cz++) {
+                  const bx = x + cx;
+                  const by = y + cy;
+                  const bz = z + cz;
+                  
+                  // Make sure we're within bounds
+                  if (bx < 0 || by < 0 || bz < 0 || bx >= this.size || by >= this.size || bz >= this.size) {
+                    continue;
+                  }
+                  
+                  // Don't create caves in water or air
+                  const currentBlock = this.getBlock(bx, by, bz);
+                  if (currentBlock === this.blockTypes.AIR || currentBlock === this.blockTypes.WATER) {
+                    continue;
+                  }
+                  
+                  this.setBlock(bx, by, bz, this.blockTypes.AIR);
+                }
               }
             }
           }
@@ -124,7 +212,7 @@ class Chunk {
     }
   }
   
-  // Build the optimized mesh (only visible faces)
+  // Build mesh (only visible faces) - no changes needed from original
   buildMesh() {
     const positions = [];
     const colors = [];
@@ -186,10 +274,10 @@ class Chunk {
   
   // Add a single block face to the mesh data
   addBlockFace(positions, colors, indices, x, y, z, face, baseColor, shade, vertexOffset) {
-    // Adjust position to be in world space
-    const worldX = x - this.size / 2;
-    const worldY = y - this.size / 2;
-    const worldZ = z - this.size / 2;
+    // Block positions are local to the chunk, no need to offset by chunk size/2 anymore
+    const worldX = x;
+    const worldY = y;
+    const worldZ = z;
     
     // Vertex positions for each face
     // Each face has 4 vertices in counter-clockwise order
@@ -269,121 +357,5 @@ class Chunk {
       vertexOffset, vertexOffset + 1, vertexOffset + 2,
       vertexOffset, vertexOffset + 2, vertexOffset + 3
     );
-  }
-}
-
-// Update the Renderer class to render the chunk
-class ChunkRenderer extends Renderer {
-  constructor(canvas) {
-    super(canvas);
-    this.chunk = new Chunk(16); // Create a 16x16x16 chunk
-    this.initChunkBuffers();
-    
-    // Create a camera (this now uses the separate Camera class defined in camera.js)
-    this.camera = new Camera(canvas);
-  }
-  
-  initChunkBuffers() {
-    // Generate the optimized mesh
-    const mesh = this.chunk.buildMesh();
-    
-    // Create position buffer
-    const positionBuffer = this.gl.createBuffer();
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, positionBuffer);
-    this.gl.bufferData(this.gl.ARRAY_BUFFER, mesh.positions, this.gl.STATIC_DRAW);
-    
-    // Create color buffer
-    const colorBuffer = this.gl.createBuffer();
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, colorBuffer);
-    this.gl.bufferData(this.gl.ARRAY_BUFFER, mesh.colors, this.gl.STATIC_DRAW);
-    
-    // Create index buffer
-    const indexBuffer = this.gl.createBuffer();
-    this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, indexBuffer);
-    this.gl.bufferData(this.gl.ELEMENT_ARRAY_BUFFER, mesh.indices, this.gl.STATIC_DRAW);
-    
-    // Store buffers and index count
-    this.chunkBuffers = {
-      position: positionBuffer,
-      color: colorBuffer,
-      indices: indexBuffer,
-      indexCount: mesh.indices.length
-    };
-  }
-  
-  render(currentTime) {
-    currentTime *= 0.001;  // Convert to seconds
-    const deltaTime = currentTime - this.lastFrameTime;
-    this.lastFrameTime = currentTime;
-    
-    // Update camera based on keyboard and mouse inputs
-    this.camera.update(deltaTime);
-    
-    this.resize();
-    this.gl.clear(this.gl.COLOR_BUFFER_BIT | this.gl.DEPTH_BUFFER_BIT);
-    
-    // Create perspective matrix
-    const fieldOfView = 45 * Math.PI / 180;
-    const aspect = this.gl.canvas.clientWidth / this.gl.canvas.clientHeight;
-    const zNear = 0.1;
-    const zFar = 100.0;
-    const projectionMatrix = mat4.create();
-    
-    mat4.perspective(projectionMatrix, fieldOfView, aspect, zNear, zFar);
-    
-    // Get the camera view matrix
-    const viewMatrix = this.camera.getViewMatrix();
-    
-    // Set up model matrix for chunk (no rotation)
-    const modelMatrix = mat4.create();
-    // Chunk is already centered around origin
-    
-    // Combine model and view matrices
-    const modelViewMatrix = mat4.create();
-    // Start with view matrix
-    for (let i = 0; i < 16; i++) {
-      modelViewMatrix[i] = viewMatrix[i];
-    }
-    
-    // Set vertex position
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.chunkBuffers.position);
-    this.gl.vertexAttribPointer(
-      this.programInfo.attribLocations.vertexPosition,
-      3,        // 3 components per vertex
-      this.gl.FLOAT,
-      false,
-      0,
-      0);
-    this.gl.enableVertexAttribArray(this.programInfo.attribLocations.vertexPosition);
-    
-    // Set vertex color
-    this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.chunkBuffers.color);
-    this.gl.vertexAttribPointer(
-      this.programInfo.attribLocations.vertexColor,
-      4,        // 4 components per color
-      this.gl.FLOAT,
-      false,
-      0,
-      0);
-    this.gl.enableVertexAttribArray(this.programInfo.attribLocations.vertexColor);
-    
-    // Bind indices
-    this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, this.chunkBuffers.indices);
-    
-    // Use our shader program
-    this.gl.useProgram(this.programInfo.program);
-    
-    // Set the uniforms
-    this.gl.uniformMatrix4fv(
-      this.programInfo.uniformLocations.projectionMatrix,
-      false,
-      projectionMatrix);
-    this.gl.uniformMatrix4fv(
-      this.programInfo.uniformLocations.modelViewMatrix,
-      false,
-      modelViewMatrix);
-    
-    // Draw the chunk
-    this.gl.drawElements(this.gl.TRIANGLES, this.chunkBuffers.indexCount, this.gl.UNSIGNED_SHORT, 0);
   }
 }

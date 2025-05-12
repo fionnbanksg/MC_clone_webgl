@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebGL Minecraft-style Chunk Renderer</title>
+    <title>Minecraft-style World Renderer</title>
     <style>
         body {
             margin: 0;
@@ -20,11 +20,16 @@
 <body>
     <canvas id="webgl-canvas"></canvas>
     
+    <!-- Original utilities -->
     <script src="utils.js"></script>
     <script src="shaders.js"></script>
+    
+    <!-- Updated classes -->
     <script src="camera.js"></script>
-    <script src="renderer.js"></script>
     <script src="chunk.js"></script>
+    <script src="world.js"></script>
+    <script src="renderer.js"></script>
+    <script src="world-renderer.js"></script>
     <script src="main.js"></script>
 </body>
 </html>
