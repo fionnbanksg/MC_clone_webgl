@@ -1,7 +1,9 @@
 // Initialize WebGL when the page is loaded
 window.onload = function() {
   const canvas = document.getElementById('webgl-canvas');
-  const renderer = new Renderer(canvas);
+  
+  // Use the ChunkRenderer instead of the regular Renderer
+  const renderer = new ChunkRenderer(canvas);
   
   if (renderer.gl) {
     console.log('WebGL initialized successfully');
