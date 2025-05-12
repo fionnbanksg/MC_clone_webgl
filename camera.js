@@ -1,7 +1,7 @@
 class Camera {
   constructor(canvas) {
     // Camera position and orientation
-    this.position = [0.0, 0.0, 6.0];
+    this.position = [0.0, 10.0, 0.0]; // Start on top of the chunk
     this.front = [0.0, 0.0, -1.0];
     this.up = [0.0, 1.0, 0.0];
     this.right = [1.0, 0.0, 0.0];
@@ -9,18 +9,24 @@ class Camera {
     
     // Euler angles
     this.yaw = -90.0;   // Initial direction: looking down negative z-axis
-    this.pitch = 0.0;
+    this.pitch = -15.0; // Look slightly downward
     
     // Camera options
-    this.movementSpeed = 5.0;
+    this.movementSpeed = 8.0; // Faster movement
     this.mouseSensitivity = 0.1;
+    
+    // For smooth movement
+    this.movementSmoothing = 0.8; // 0 = no smoothing, 1 = infinite smoothing
+    this.velocity = [0.0, 0.0, 0.0];
     
     // Key states
     this.keys = {
       w: false,
       a: false,
       s: false,
-      d: false
+      d: false,
+      space: false, // For up movement
+      shift: false  // For down movement
     };
     
     // Mouse control
@@ -38,35 +44,51 @@ class Camera {
   setupEventHandlers(canvas) {
     // Keyboard event handlers
     document.addEventListener('keydown', (e) => {
-      switch(e.key.toLowerCase()) {
-        case 'w':
+      // Using e.code which is more reliable for physical key positions
+      switch(e.code) {
+        case 'KeyW':
           this.keys.w = true;
           break;
-        case 'a':
+        case 'KeyA':
           this.keys.a = true;
           break;
-        case 's':
+        case 'KeyS':
           this.keys.s = true;
           break;
-        case 'd':
+        case 'KeyD':
           this.keys.d = true;
+          break;
+        case 'Space': // Space key
+          this.keys.space = true;
+          break;
+        case 'ShiftLeft': // Left Shift key
+        case 'ShiftRight': // Right Shift key
+          this.keys.shift = true;
           break;
       }
     });
     
     document.addEventListener('keyup', (e) => {
-      switch(e.key.toLowerCase()) {
-        case 'w':
+      // Using e.code which is more reliable for physical key positions
+      switch(e.code) {
+        case 'KeyW':
           this.keys.w = false;
           break;
-        case 'a':
+        case 'KeyA':
           this.keys.a = false;
           break;
-        case 's':
+        case 'KeyS':
           this.keys.s = false;
           break;
-        case 'd':
+        case 'KeyD':
           this.keys.d = false;
+          break;
+        case 'Space': // Space key
+          this.keys.space = false;
+          break;
+        case 'ShiftLeft': // Left Shift key
+        case 'ShiftRight': // Right Shift key
+          this.keys.shift = false;
           break;
       }
     });
@@ -106,7 +128,12 @@ class Camera {
     instructions.style.fontFamily = 'Arial, sans-serif';
     instructions.style.padding = '5px';
     instructions.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
-    instructions.textContent = 'Click to capture mouse. Use WASD to move and mouse to look around.';
+    instructions.innerHTML = 'Click to capture mouse.<br>' + 
+                           'WASD: Move horizontally<br>' +
+                           'SPACE: Move up<br>' + 
+                           'SHIFT: Move down<br>' +
+                           'Mouse: Look around<br>' +
+                           'ESC: Release mouse';
     document.body.appendChild(instructions);
     
     // Hide instructions when pointer is locked
@@ -133,31 +160,53 @@ class Camera {
   }
   
   update(deltaTime) {
-    const velocity = this.movementSpeed * deltaTime;
+    const speed = this.movementSpeed * deltaTime;
+    const smoothing = this.movementSmoothing;
+    
+    // Target velocity based on inputs
+    const targetVelocity = [0, 0, 0];
     
     // Forward/backward
     if (this.keys.w) {
-      this.position[0] += this.front[0] * velocity;
-      this.position[1] += this.front[1] * velocity;
-      this.position[2] += this.front[2] * velocity;
+      targetVelocity[0] += this.front[0] * speed;
+      // Remove Y component to keep movement horizontal
+      targetVelocity[2] += this.front[2] * speed;
     }
     if (this.keys.s) {
-      this.position[0] -= this.front[0] * velocity;
-      this.position[1] -= this.front[1] * velocity;
-      this.position[2] -= this.front[2] * velocity;
+      targetVelocity[0] -= this.front[0] * speed;
+      // Remove Y component to keep movement horizontal
+      targetVelocity[2] -= this.front[2] * speed;
     }
     
     // Strafe left/right
     if (this.keys.a) {
-      this.position[0] -= this.right[0] * velocity;
-      this.position[1] -= this.right[1] * velocity;
-      this.position[2] -= this.right[2] * velocity;
+      targetVelocity[0] -= this.right[0] * speed;
+      targetVelocity[2] -= this.right[2] * speed;
     }
     if (this.keys.d) {
-      this.position[0] += this.right[0] * velocity;
-      this.position[1] += this.right[1] * velocity;
-      this.position[2] += this.right[2] * velocity;
+      targetVelocity[0] += this.right[0] * speed;
+      targetVelocity[2] += this.right[2] * speed;
     }
+    
+    // Up/down movement using space and shift
+    if (this.keys.space) {
+      targetVelocity[1] += speed; // Move up
+    }
+    if (this.keys.shift) {
+      targetVelocity[1] -= speed; // Move down
+    }
+    
+    // Apply smoothing to velocity
+    this.velocity[0] = this.velocity[0] * smoothing + targetVelocity[0] * (1 - smoothing);
+    this.velocity[1] = this.velocity[1] * smoothing + targetVelocity[1] * (1 - smoothing);
+    this.velocity[2] = this.velocity[2] * smoothing + targetVelocity[2] * (1 - smoothing);
+    
+    // Apply velocity to position
+    this.position[0] += this.velocity[0];
+    this.position[1] += this.velocity[1];
+    this.position[2] += this.velocity[2];
+    
+    // No gravity effect - we want to be able to fly
   }
   
   getViewMatrix() {

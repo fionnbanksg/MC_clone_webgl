@@ -279,8 +279,8 @@ class ChunkRenderer extends Renderer {
     this.chunk = new Chunk(16); // Create a 16x16x16 chunk
     this.initChunkBuffers();
     
-    // Move camera back further to see the whole chunk
-    this.camera.position = [0.0, 0.0, 30.0];
+    // Create a camera (this now uses the separate Camera class defined in camera.js)
+    this.camera = new Camera(canvas);
   }
   
   initChunkBuffers() {
@@ -334,11 +334,9 @@ class ChunkRenderer extends Renderer {
     // Get the camera view matrix
     const viewMatrix = this.camera.getViewMatrix();
     
-    // Set up model matrix for chunk
+    // Set up model matrix for chunk (no rotation)
     const modelMatrix = mat4.create();
     // Chunk is already centered around origin
-    // Just add a slow rotation for demo purposes
-    mat4.rotate(modelMatrix, modelMatrix, currentTime * 0.1, [0, 1, 0]);
     
     // Combine model and view matrices
     const modelViewMatrix = mat4.create();
@@ -346,8 +344,6 @@ class ChunkRenderer extends Renderer {
     for (let i = 0; i < 16; i++) {
       modelViewMatrix[i] = viewMatrix[i];
     }
-    // Apply model transformations
-    mat4.rotate(modelViewMatrix, modelViewMatrix, currentTime * 0.1, [0, 1, 0]);
     
     // Set vertex position
     this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.chunkBuffers.position);
